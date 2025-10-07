@@ -1,0 +1,213 @@
+/* ============ PinterPal Widget Styles ============ */
+/* Kleuren makkelijk aanpassen via CSS variables */
+:root {
+  /* Brand */
+  --pp-primary: #0A6A73;        /* Teal (hoofdkleur, launcher + user bubble) */
+  --pp-primary-600: #084E55;    /* Donkerder teal voor hover/gradient */
+  --pp-accent:  #F2B705;        /* Mosterdgeel (accent, badge, CTA's) */
+
+  /* Surface & text (donkerder, zoals in je oude widget) */
+  --pp-bg:      #0F3F45;        /* Paneel achtergrond (diep teal) */
+  --pp-bg-soft: #1B5860;        /* Zachte vlakken/chips */
+  --pp-text:    #EAF5F6;        /* Primaire tekst (bijna wit) */
+  --pp-muted:   #B8D1D3;        /* Secundaire tekst */
+  --pp-border:  #2A6A72;        /* Randen */
+  --pp-success: #27c082;
+  --pp-error:   #ef476f;
+  --pp-shadow:  0 10px 30px rgba(0, 0, 0, 0.45);
+  --pp-radius:  16px;
+}
+
+/* Donker thema blijft in dezelfde sfeer; iets meer contrast */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pp-bg:      #0C3439;
+    --pp-bg-soft: #14484F;
+    --pp-text:    #EAF5F6;
+    --pp-muted:   #A3BFC1;
+    --pp-border:  #22585F;
+    --pp-shadow:  0 10px 30px rgba(0,0,0,.55);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: var(--pp-text); background: var(--pp-bg); }
+
+/* Demo page */
+.pp-demo { max-width: 980px; margin: 48px auto; padding: 0 20px; }
+.pp-hero { margin-top: 16px; }
+.pp-hero-card {
+  /* subtiele teal glow i.p.v. paars */
+  background: linear-gradient(180deg, rgba(10,106,115,0.10) 0%, rgba(10,106,115,0) 100%);
+  border-color: var(--pp-border);
+  border-radius: calc(var(--pp-radius) + 8px);
+  padding: 32px;
+  box-shadow: var(--pp-shadow);
+}
+.pp-hero-card h2 { margin: 0 0 8px; font-size: 28px; }
+.pp-hero-card p { margin: 0 0 16px; color: var(--pp-muted); }
+.pp-benefits { padding-left: 18px; margin: 0; color: var(--pp-text); }
+.pp-benefits li { margin: 6px 0; }
+
+/* ====== Floating Launcher ====== */
+#pp-launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: none;
+  background: radial-gradient(120% 120% at 100% 0%, var(--pp-primary) 0%, var(--pp-primary-600) 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(110, 86, 207, 0.35);
+  display: grid;
+  place-items: center;
+  transition: transform .15s ease, box-shadow .2s ease, opacity .2s ease;
+  z-index: 2147483000;
+}
+#pp-launcher:hover { transform: translateY(-2px); box-shadow: 0 16px 36px rgba(110, 86, 207, 0.45); }
+#pp-launcher:active { transform: translateY(0); }
+#pp-launcher .pp-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--pp-accent); color: #3a2b00; /* goed contrast op mosterdgeel */
+  border-radius: 999px; display: grid; place-items: center; border: 2px solid #fff;
+}
+
+/* ====== Widget Panel ====== */
+.pp-panel {
+  position: fixed;
+  right: 20px; bottom: 100px;
+  width: min(420px, calc(100% - 40px));
+  max-height: min(74vh, 680px);
+  background: var(--pp-bg);
+  border: 1px solid var(--pp-border);
+  border-radius: calc(var(--pp-radius) + 4px);
+  box-shadow: var(--pp-shadow);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  opacity: 0; transform: translateY(8px) scale(.98);
+  pointer-events: none;
+  z-index: 2147483000;
+}
+
+.pp-panel.pp-open {
+  opacity: 1; transform: translateY(0) scale(1);
+  pointer-events: auto;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+/* Header */
+.pp-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-bottom: 1px solid var(--pp-border);
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgba(110,86,207,.18) 0%, rgba(110,86,207,0) 60%),
+    var(--pp-bg);
+}
+.pp-logo {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: radial-gradient(120% 120% at 100% 0%, var(--pp-primary) 0%, var(--pp-primary-600) 100%);
+  display: grid; place-items: center; color: #fff; font-weight: 800;
+}
+.pp-title { display: grid; line-height: 1.1; }
+.pp-title strong { font-size: 15px; }
+.pp-title span { font-size: 12px; color: var(--pp-muted); }
+.pp-header .pp-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pp-badge-soft {
+  font-size: 11px; padding: 6px 8px; border-radius: 999px;
+  background: var(--pp-bg-soft); color: var(--pp-muted);
+  border: 1px solid var(--pp-border);
+}
+
+/* Progress */
+.pp-progress {
+  height: 3px; background: linear-gradient(90deg, var(--pp-accent), var(--pp-primary));
+  width: 0%;
+  transition: width .4s ease;
+}
+
+/* Messages area */
+.pp-messages {
+  overflow: auto; padding: 16px; display: grid; gap: 10px;
+  background:
+    radial-gradient(100% 60% at 50% 0%, rgba(110,86,207,.06) 0%, rgba(110,86,207,0) 70%),
+    var(--pp-bg);
+}
+.pp-msg {
+  max-width: 86%; padding: 10px 12px; border-radius: 14px;
+  border: 1px solid var(--pp-border);
+  background: var(--pp-bg-soft); color: var(--pp-text);
+}
+.pp-msg.pp-bot { border-top-left-radius: 6px; }
+.pp-msg.pp-user {
+  /* user-bubble in brand teal */
+  background: var(--pp-primary);
+  color: #fff;
+  border-color: transparent; border-top-right-radius: 6px;
+}
+.pp-typing {
+  display: inline-grid; grid-auto-flow: column; gap: 4px; align-items: center;
+}
+.pp-typing span {
+  width: 6px; height: 6px; border-radius: 999px; background: var(--pp-muted);
+  animation: pp-bounce 1s infinite ease-in-out;
+}
+.pp-typing span:nth-child(2) { animation-delay: .15s; }
+.pp-typing span:nth-child(3) { animation-delay: .3s; }
+
+@keyframes pp-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: .6; }
+  40% { transform: translateY(-3px); opacity: 1; }
+}
+
+/* Chips */
+.pp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.pp-chip {
+  font: inherit; padding: 8px 10px; border-radius: 999px; border: 1px solid var(--pp-border);
+  background: #fff0; color: var(--pp-text); cursor: pointer;
+}
+.pp-chip:hover { 
+  border-color: var(--pp-accent); 
+  color: var(--pp-accent);
+}
+@media (prefers-color-scheme: dark) {
+  .pp-chip { background: rgba(255,255,255,0.02); }
+}
+
+/* Footer / input */
+.pp-footer {
+  padding: 12px; border-top: 1px solid var(--pp-border); background: var(--pp-bg);
+  display: grid; grid-template-columns: 1fr auto; gap: 10px;
+}
+.pp-input {
+  width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--pp-border);
+  background: var(--pp-bg-soft); color: var(--pp-text); outline: none;
+}
+.pp-input:focus { border-color: var(--pp-primary); box-shadow: 0 0 0 3px rgba(110,86,207,.15); }
+.pp-send {
+  padding: 0 14px; border-radius: 12px; border: none; cursor: pointer; font-weight: 600;
+  background: radial-gradient(120% 120% at 100% 0%, var(--pp-primary) 0%, var(--pp-primary-600) 100%);
+  color: #fff; min-width: 88px; height: 44px;
+}
+.pp-send:hover { filter: brightness(1.05); }
+.pp-send:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Embed iframe helper (optioneel) */
+.pp-iframe {
+  position: fixed; right: 20px; bottom: 100px;
+  width: min(420px, calc(100% - 40px));
+  height: min(74vh, 680px);
+  border: 0; border-radius: calc(var(--pp-radius) + 4px);
+  box-shadow: var(--pp-shadow); overflow: hidden;
+}
+
+/* Motion respect */
+@media (prefers-reduced-motion: reduce) {
+  #pp-launcher, .pp-panel { transition: none !important; }
+  .pp-typing span { animation: none; }
+}
