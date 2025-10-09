@@ -29,6 +29,16 @@
   <!-- Widget markup – kan ook apart geladen worden via widget.html -->
   <div id="pinterpal-widget-root"></div>
 
-  <script src="./app.js" defer></script>
+  <script>
+  window.PP_CONFIG = {
+    API_BASE: "http://127.0.0.1:8003",
+    API_USER: "admin",
+    API_PASS: "secret",
+    TABLE: "wijnen"
+  };
+</script>
+<script src="app.js?v=dev-3"></script>
+
+
 </body>
 </html>

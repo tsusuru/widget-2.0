@@ -1,13 +1,31 @@
 /* ============ PinterPal Widget App ============ */
-/* NB: API integratie (apimovie.py) later. Dit is alleen UI + mock flow. */
+/* Live API-integratie met FastAPI /enrich-data (OOP-backend) */
 
 (function initPinterPalWidget() {
   const ROOT_ID = 'pinterpal-widget-root';
-
-  // Create launcher + panel once
   const root = document.getElementById(ROOT_ID);
   if (!root) return;
 
+  // ---- Config uit script tag (fallbacks voor dev) ----
+  const currentScript = document.currentScript || document.querySelector('script[src*="app.js"]');
+  const fromScript = {
+    API_BASE: currentScript?.dataset.apiBase,
+    API_USER: currentScript?.dataset.apiUser,
+    API_PASS: currentScript?.dataset.apiPass,
+    TABLE:    currentScript?.dataset.table
+  };
+
+  const CFG = {
+    API_BASE: (window.PP_CONFIG?.API_BASE || fromScript.API_BASE || 'http://127.0.0.1:8003').replace(/\/+$/,''),
+    API_USER:  window.PP_CONFIG?.API_USER  || fromScript.API_USER  || 'admin',
+    API_PASS:  window.PP_CONFIG?.API_PASS  || fromScript.API_PASS  || 'secret',
+    TABLE:     window.PP_CONFIG?.TABLE     || fromScript.TABLE     || 'wijnen',
+    TIMEOUT_MS: 20000
+  };
+
+  console.log('PP Widget config →', { base: CFG.API_BASE, user: CFG.API_USER, table: CFG.TABLE });
+
+  // ---- UI skeleton (launcher + panel) ----
   root.insertAdjacentHTML('beforeend', `
     <button id="pp-launcher" aria-label="Open PinterPal">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -29,12 +47,7 @@
         </div>
       </header>
       <div class="pp-progress" id="pp-progress"></div>
-      <main class="pp-messages" id="pp-messages">
-        <div class="pp-msg pp-bot">
-          Hoi! Ik help je snel naar de perfect passende producten. Eerst wat vragen — kost je <strong>minder dan 1 minuut</strong>.
-          <div class="pp-chips" id="pp-chips"></div>
-        </div>
-      </main>
+      <main class="pp-messages" id="pp-messages"></main>
       <footer class="pp-footer">
         <input id="pp-input" class="pp-input" placeholder="Typ je antwoord…" aria-label="Bericht" />
         <button id="pp-send" class="pp-send" disabled>Verstuur</button>
@@ -42,39 +55,86 @@
     </section>
   `);
 
-  const qset = [
-    { id: 'use', label: 'Waarvoor ga je het gebruiken?', options: ['Dagelijks', 'Reizen', 'Sport', 'Zakelijk'] },
-    { id: 'budget', label: 'Wat is je budget?', options: ['< €50', '€50–€150', '€150–€300', '€300+'] },
-    { id: 'brand', label: 'Heb je voorkeur voor een merk?', options: ['Geen voorkeur', 'A-merk', 'Duurzaam', 'Prijs/kwaliteit'] },
-    { id: 'speed', label: 'Hoe belangrijk is snelheid?', options: ['Niet belangrijk', 'Gemiddeld', 'Heel belangrijk'] },
-    { id: 'size', label: 'Welke maat past het best?', options: ['Compact', 'Gemiddeld', 'Groot'] },
-    { id: 'features', label: 'Welke features zijn must-have?', options: ['Waterproof', 'Draadloos', '4K', 'Noise-cancelling'] },
-    { id: 'style', label: 'Welke stijl zoek je?', options: ['Minimal', 'Klassiek', 'Bold'] },
-    { id: 'delivery', label: 'Hoe snel wil je geleverd?', options: ['Vandaag/Morgen', 'Binnen 3 dagen', 'Maakt niet uit'] },
-  ];
-
-  const state = {
-    step: 0,
-    answers: {},
-    total: Math.min(8, qset.length)
-  };
-
+  // ---- DOM refs ----
   const $ = (id) => document.getElementById(id);
   const launcher = $('pp-launcher');
   const panel = root.querySelector('.pp-panel');
   const messages = $('pp-messages');
-  const chips = $('pp-chips');
   const input = $('pp-input');
   const send = $('pp-send');
   const closeBtn = $('pp-close');
   const progress = $('pp-progress');
 
+  // ---- State ----
+  const state = {
+    sessionId: null,
+    lastQuestion: null,
+    waiting: false
+  };
+
+  // ---- Auth/Fetch helpers ----
+  function basicAuth(user, pass) {
+    const raw = `${user}:${pass}`;
+    const b64 = btoa(unescape(encodeURIComponent(raw))); // unicode-safe
+    return 'Basic ' + b64;
+  }
+
+  function apiHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': basicAuth(CFG.API_USER, CFG.API_PASS)
+    };
+  }
+
+  async function apiFetch(path, options = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), CFG.TIMEOUT_MS);
+    try {
+      const res = await fetch(`${CFG.API_BASE}${path}`, {
+        signal: ctrl.signal,
+        ...options,
+        headers: { ...apiHeaders(), ...(options.headers || {}) }
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(()=> '');
+        throw new Error(`HTTP ${res.status} ${res.statusText} — ${text || 'no body'}`);
+      }
+      return await res.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function sendPrompt(prompt, { resetDetail = false } = {}) {
+    return apiFetch('/enrich-data/', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt,
+        session_id: state.sessionId,
+        table_name: CFG.TABLE,
+        reset_detail_mode: !!resetDetail
+      })
+    });
+  }
+
+  async function sendChoice(choiceText) {
+    return apiFetch('/enrich-data/choice', {
+      method: 'POST',
+      body: JSON.stringify({
+        session_id: state.sessionId,
+        choice_text: choiceText,
+        table_name: CFG.TABLE
+      })
+    });
+  }
+
+  // ---- UI helpers ----
   function openPanel() {
     panel.classList.add('pp-open');
     panel.setAttribute('aria-hidden', 'false');
     launcher.style.opacity = '0';
     launcher.style.pointerEvents = 'none';
-    renderStep();
+    bootConversation();
   }
   function closePanel() {
     panel.classList.remove('pp-open');
@@ -82,108 +142,11 @@
     launcher.style.opacity = '1';
     launcher.style.pointerEvents = 'auto';
   }
-
-  launcher.addEventListener('click', openPanel);
-  closeBtn.addEventListener('click', closePanel);
-
-  input.addEventListener('input', () => {
-    send.disabled = input.value.trim().length === 0;
-  });
-  send.addEventListener('click', () => {
-    const val = input.value.trim();
-    if (!val) return;
-    appendUser(val);
-    input.value = '';
-    send.disabled = true;
-    handleAnswer(val);
-  });
-
-  function renderStep() {
-    const step = state.step;
-    const q = qset[step];
-    progress.style.width = `${(step / state.total) * 100}%`;
-
-    chips.innerHTML = '';
-    if (!q) return;
-
-    const msg = messages.querySelector('.pp-msg.pp-bot:last-of-type');
-    if (msg) {
-      msg.insertAdjacentHTML('beforeend', `<div style="margin-top:8px;color:var(--pp-muted);font-size:12px;">Vraag ${step + 1} van ${state.total}</div>`);
-    }
-
-    q.options.forEach(opt => {
-      const btn = document.createElement('button');
-      btn.className = 'pp-chip';
-      btn.type = 'button';
-      btn.textContent = opt;
-      btn.addEventListener('click', () => {
-        appendUser(opt);
-        handleAnswer(opt);
-      });
-      chips.appendChild(btn);
-    });
-
-    // Zet huidige vraag in een apart botbericht (duidelijker)
-    setTimeout(() => {
-      appendBot(q.label);
-    }, 120);
+  function setProgressByRemaining(remaining) {
+    const clamped = Math.max(0, Math.min(3, Number(remaining ?? 0))); // MIN_QUESTIONS≈2 + eventuele extra
+    const pct = 100 - (clamped * 33.3);
+    progress.style.width = `${pct}%`;
   }
-
-  function handleAnswer(val) {
-    const key = qset[state.step]?.id;
-    if (key) state.answers[key] = val;
-
-    // Typ-indicator
-    typing(true);
-    setTimeout(() => {
-      typing(false);
-      state.step += 1;
-      if (state.step < state.total) {
-        // Toon volgende vraag
-        appendBot(reasonLine(state.step - 1));
-        renderStep();
-      } else {
-        // Mock resultaten
-        progress.style.width = '100%';
-        const { summary, items } = mockRankProducts(state.answers);
-        appendBot(summary);
-        items.forEach((p, i) => {
-          appendBot(productCard(p, i));
-        });
-        appendBot('Klaar! Wil je dat ik de selectie mail/opsla of direct naar productpagina’s ga?');
-      }
-    }, 550);
-  }
-
-  function reasonLine(prevIndex) {
-    const q = qset[prevIndex];
-    if (!q) return 'Top! Volgende…';
-    return `Helder — ik hou rekening met <strong>${q.label.toLowerCase()}</strong>.`;
-  }
-
-  function productCard(p, idx) {
-    return `
-      <div style="display:grid; grid-template-columns: 64px 1fr auto; gap:12px; align-items:center;">
-        <div style="width:64px;height:64px;border-radius:12px;background:var(--pp-bg-soft);border:1px solid var(--pp-border);display:grid;place-items:center;font-weight:700;">${idx+1}</div>
-        <div>
-          <div style="font-weight:600;margin-bottom:2px">${p.title}</div>
-          <div style="font-size:12px;color:var(--pp-muted)">${p.reason}</div>
-        </div>
-        <a href="#" class="pp-chip" role="button">Bekijk</a>
-      </div>
-    `;
-  }
-
-  function mockRankProducts(answers) {
-    const summary = `Op basis van je antwoorden geef ik je de beste match — duidelijk waarom, zodat je met vertrouwen kiest.`;
-    const items = [
-      { title: 'Pro Model X', reason: 'Beste balans prijs/snelheid · Populair bij dagelijks gebruik' },
-      { title: 'Eco Lite', reason: 'Duurzame keuze · Lichtgewicht · Snelle levering' },
-      { title: 'Travel Go', reason: 'Compact & sterk · Top voor reizen' },
-    ];
-    return { summary, items };
-  }
-
   function appendBot(html) {
     const el = document.createElement('div');
     el.className = 'pp-msg pp-bot';
@@ -191,7 +154,6 @@
     messages.appendChild(el);
     messages.scrollTop = messages.scrollHeight;
   }
-
   function appendUser(text) {
     const el = document.createElement('div');
     el.className = 'pp-msg pp-user';
@@ -199,22 +161,199 @@
     messages.appendChild(el);
     messages.scrollTop = messages.scrollHeight;
   }
-
   let typingEl;
   function typing(on) {
     if (on) {
+      if (typingEl) return;
       typingEl = document.createElement('div');
       typingEl.className = 'pp-msg pp-bot';
       typingEl.innerHTML = `<div class="pp-typing" aria-live="polite"><span></span><span></span><span></span></div>`;
       messages.appendChild(typingEl);
       messages.scrollTop = messages.scrollHeight;
     } else if (typingEl) {
-      typingEl.remove();
-      typingEl = null;
+      typingEl.remove(); typingEl = null;
+    }
+  }
+  function toastError(text) {
+    appendBot(`<div style="color:#ffb4b4">⚠️ ${text}</div>`);
+  }
+
+  // ---- Rendering van backend antwoorden ----
+  function renderQuestion(q) {
+    state.lastQuestion = q;
+    const data = q.data || {};
+    const remaining = Number(data.remaining_questions ?? 0);
+    setProgressByRemaining(remaining);
+
+    if (data.question_text) {
+      appendBot(`
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div>${data.question_text}</div>
+          <div style="color:var(--pp-muted);font-size:12px;">Nog ${remaining} vraag${remaining===1?'':'en'}…</div>
+        </div>
+      `);
+    }
+
+    const options = Array.isArray(data.options) ? data.options : [];
+    const suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+
+    const chipWrap = document.createElement('div');
+    chipWrap.className = 'pp-chips';
+    messages.appendChild(chipWrap);
+
+    function addChip(label, isPrimary = false) {
+      const btn = document.createElement('button');
+      btn.className = 'pp-chip';
+      if (isPrimary) btn.classList.add('pp-chip--primary');
+      btn.type = 'button';
+      btn.textContent = (typeof label === 'string') ? label : (label?.label || label?.value || 'Optie');
+      btn.addEventListener('click', async () => {
+        appendUser(btn.textContent);
+        await handleSubmit(btn.textContent, { isChoice: true });
+      });
+      chipWrap.appendChild(btn);
+    }
+
+    if (q.type === 'multiple_choice' && options.length) {
+      options.forEach((o, i) => addChip(o, i < 3));
+    } else if (suggestions.length) {
+      suggestions.forEach((s, i) => addChip(s, i < 2));
     }
   }
 
-  // Open on URL hash ?open
+  function renderRecommendation(text, item, alts) {
+    setProgressByRemaining(0);
+    if (text) appendBot(text);
+
+    // Toon gekozen + 2 alternatieven (server stuurt 'alternatives' met _image)
+    const list = Array.isArray(alts) && alts.length ? alts : (item ? [item] : []);
+    if (!list.length) return;
+
+    const html = list.slice(0, 3).map((p, idx) => productCardWithImage(p, idx)).join('');
+    appendBot(`
+      <div class="pp-cardlist" style="display:grid; gap:12px; margin-top:8px;">
+        ${html}
+      </div>
+    `);
+
+    // knop-actie (nu ‘Waarom deze?’ — triggert detail-mode tekst)
+    messages.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-pp="view"]');
+      if (!btn) return;
+      appendUser('Waarom deze?');
+      await handleSubmit('Waarom deze?', { isChoice: false });
+    }, { once: true });
+  }
+
+  function productCardWithImage(p, idx) {
+    const title = escapeHtml(p.title || p.naam || p.productName || p.name || `Optie ${idx+1}`);
+    const img = p._image || p.image || p.image_url || p.imageUrl || p.thumbnail || p.foto || p.afbeelding || '';
+    const facts = pickFacts(p, ['prijs','price','jaar','year','land','streek','druif','wijnhuis']).slice(0,3);
+
+    return `
+      <div style="display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;border:1px solid var(--pp-border);background:var(--pp-bg-soft);border-radius:12px;padding:10px;">
+        <div style="width:72px;height:72px;border-radius:10px;overflow:hidden;background:var(--pp-bg);border:1px solid var(--pp-border);display:grid;place-items:center;">
+          ${img ? `<img src="${escapeHtml(img)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+                : `<span style="font-weight:700;font-size:18px;">${idx+1}</span>`}
+        </div>
+        <div>
+          <div style="font-weight:700;margin-bottom:2px">${title}</div>
+          ${facts.length ? `<div style="font-size:12px;color:var(--pp-muted)">${facts.map(escapeHtml).join(' · ')}</div>` : ``}
+        </div>
+        <button class="pp-chip" data-pp="view" data-idx="${idx}">Bekijk</button>
+      </div>
+    `;
+  }
+
+  // ---- Conversation flow ----
+  async function bootConversation() {
+    if (messages.children.length === 0) {
+      appendBot(`Hoi! Ik help je snel naar de best passende keuze. Eerst een paar vragen — dat kost je minder dan 1 minuut.`);
+    }
+    await handleSubmit('Start', { isChoice: false, reset: true });
+  }
+
+  async function handleSubmit(text, { isChoice = false, reset = false } = {}) {
+    if (state.waiting) return;
+    state.waiting = true;
+    input.value = ''; send.disabled = true;
+    typing(true);
+
+    try {
+      const res = isChoice
+        ? await sendChoice(text)
+        : await sendPrompt(text, { resetDetail: reset });
+
+      if (!state.sessionId && res.session_id) state.sessionId = res.session_id;
+
+      typing(false);
+
+      switch (res.stage) {
+        case 'question': {
+          renderQuestion(res.response);
+          break;
+        }
+        case 'recommendation': {
+          renderRecommendation(res.response, res.item, res.alternatives);
+          break;
+        }
+        case 'detail': {
+          if (res.response) appendBot(res.response);
+          break;
+        }
+        case 'explain': {
+          if (res.response) appendBot(res.response);
+          break;
+        }
+        default: {
+          if (typeof res.response === 'string') appendBot(res.response);
+          else appendBot('Ik heb een antwoord, maar ik weet niet hoe ik het moet tonen 🤔');
+        }
+      }
+    } catch (err) {
+      typing(false);
+      toastError(err.message || 'Er ging iets mis bij het ophalen van een antwoord.');
+    } finally {
+      state.waiting = false;
+    }
+  }
+
+  // ---- Input events ----
+  launcher.addEventListener('click', openPanel);
+  closeBtn.addEventListener('click', closePanel);
+
+  input.addEventListener('input', () => {
+    send.disabled = input.value.trim().length === 0;
+  });
+  send.addEventListener('click', async () => {
+    const val = input.value.trim();
+    if (!val) return;
+    appendUser(val);
+    await handleSubmit(val, { isChoice: false });
+  });
+
+  // Open on ?open
   if (new URLSearchParams(location.search).has('open')) openPanel();
 
+  // ---- helpers (title/facts/html escape) ----
+  function pickTitle(item) {
+    return item.title || item.naam || item.productName || item.name || item.id || 'Aanbeveling';
+  }
+  function pickFacts(item, keys) {
+    const out = [];
+    keys.forEach(k => {
+      if (item[k] !== undefined && item[k] !== null && String(item[k]).trim() !== '') {
+        out.push(`${k}: ${item[k]}`);
+      }
+    });
+    return out;
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
 })();
