@@ -211,3 +211,60 @@ body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sa
   #pp-launcher, .pp-panel { transition: none !important; }
   .pp-typing span { animation: none; }
 }
+
+/* Hero met achtergrondafbeelding */
+.pp-hero {
+  position: relative;
+  min-height: 320px;
+  padding: 40px 20px;
+  border-radius: 16px;
+  background-image: url('img/pinterpal-logo.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+
+/* Subtiele overlay voor leesbaarheid */
+.pp-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(20,14,36,0.55), rgba(20,14,36,0.55));
+}
+
+/* Card bovenop de achtergrond */
+.pp-hero-card {
+  position: relative;
+  z-index: 1;
+  max-width: 860px;
+  margin: 0 auto;
+  background: rgba(73, 70, 70, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--pp-border, #e6e0ff);
+  border-radius: 16px;
+  padding: 20px 22px;
+}
+
+/* Stappenlijst en snippets */
+.pp-steps {
+  margin: 0 0 12px 1.1rem;
+  display: grid;
+  gap: 12px;
+}
+.pp-steps li pre {
+  margin: 8px 0 0;
+  background: #0b0b14;
+  color: #eaeaff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow: auto;
+  font-size: 12.5px;
+}
+
+/* Kleine noot */
+.pp-note {
+  margin-top: 8px;
+  color: var(--pp-muted, #5f5a7a);
+  font-size: 13px;
+}

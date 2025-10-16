@@ -10,21 +10,43 @@
 </head>
 <body>
   <main class="pp-demo">
-    <h1>PinterPal Guided Selling Widget</h1>
-    <p>Deze demo laat de vernieuwde widget zien. Klik op de paarse knop rechtsonder om te starten.</p>
-    <section class="pp-hero">
-      <div class="pp-hero-card">
-        <h2>Stop scrolling. Start finding.</h2>
-        <p>Guided selling powered by your existing product data — zero extra maintenance.</p>
-        <ul class="pp-benefits">
-          <li>🔎 Persoonlijke aanbevelingen in real-time</li>
-          <li>🧭 4–8 slimme vragen</li>
-          <li>🛠️ Plug &amp; play voor Shopify/Woo</li>
-          <li>🛡️ GDPR-first · EU hosting</li>
-        </ul>
-      </div>
-    </section>
-  </main>
+  <h1>Hoe zet je PinterPal op voor je website?</h1>
+  <p>Volg de stappen hieronder en start binnen enkele minuten met guided selling.</p>
+
+  <section class="pp-hero">
+    <div class="pp-hero-card">
+      <h2>In 3 snelle stappen</h2>
+      <ol class="pp-steps">
+        <li><strong>Plak de widget-root</strong> op je pagina:
+          <pre><code>&lt;div id="pinterpal-widget-root">&lt;/div></code></pre>
+        </li>
+        <li><strong>Voeg de configuratie toe</strong> (je API-adres en tabel):
+          <pre><code>&lt;script>
+  window.PP_CONFIG = {
+    API_BASE: "https://api.jouw-domein.com",
+    API_USER: "admin",
+    API_PASS: "secret",
+    TABLE: "wijnen"
+  };
+&lt;/script></code></pre>
+        </li>
+        <li><strong>Laad het script</strong> net vóór <code>&lt;/body></code>:
+          <pre><code>&lt;script src="https://cdn.jouw-domein.com/pinterpal/app.js" defer>&lt;/script></code></pre>
+        </li>
+      </ol>
+
+      <ul class="pp-benefits">
+        <li>🔎 Persoonlijke aanbevelingen in real-time</li>
+        <li>🧭 4–8 slimme vragen</li>
+        <li>🛠️ Plug &amp; play voor Shopify / Woo / Custom</li>
+        <li>🛡️ GDPR-first · EU hosting</li>
+      </ul>
+
+      <p class="pp-note">Tip: voeg <code>?open</code> toe aan je URL om de widget direct te openen tijdens testen.</p>
+    </div>
+  </section>
+</main>
+
 
   <!-- Widget markup – kan ook apart geladen worden via widget.html -->
   <div id="pinterpal-widget-root"></div>
