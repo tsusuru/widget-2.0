@@ -72,6 +72,52 @@
     waiting: false
   };
 
+  // ---- Auto-scroll helpers (force bottom on any change) ----
+  function scrollToBottom({ smooth = false } = {}) {
+    // Gebruik twee frames zodat layout/afbeeldingen eerst kunnen renderen
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          messages.scrollTo({
+            top: messages.scrollHeight,
+            behavior: smooth ? 'smooth' : 'auto'
+          });
+        } catch {
+          // fallback
+          messages.scrollTop = messages.scrollHeight;
+        }
+      });
+    });
+  }
+
+  // Observeer DOM-wijzigingen binnen messages en grootteveranderingen
+  const mutationObserver = new MutationObserver((mutationList) => {
+    for (const m of mutationList) {
+      if (m.type === 'childList' && (m.addedNodes?.length || m.removedNodes?.length)) {
+        // Koppel image-load events zodat late loads ook naar onder scrollen
+        m.addedNodes.forEach((n) => {
+          if (n.nodeType === 1) {
+            const imgs = n.querySelectorAll?.('img') || [];
+            imgs.forEach((img) => {
+              if (!img.complete) {
+                img.addEventListener('load', () => scrollToBottom({ smooth: true }), { once: true });
+                img.addEventListener('error', () => scrollToBottom({ smooth: true }), { once: true });
+              }
+            });
+          }
+        });
+        scrollToBottom({ smooth: true });
+      }
+    }
+  });
+  mutationObserver.observe(messages, { childList: true, subtree: true });
+
+  const resizeObserver = new ResizeObserver(() => {
+    // Als content groeit/krimpt (bijv. fonts/afbeeldingen), hou onderaan
+    scrollToBottom({ smooth: true });
+  });
+  resizeObserver.observe(messages);
+
   // ---- Auth/Fetch helpers ----
   function basicAuth(user, pass) {
     const raw = `${user}:${pass}`;
@@ -135,6 +181,7 @@
     launcher.style.opacity = '0';
     launcher.style.pointerEvents = 'none';
     bootConversation();
+    scrollToBottom(); // direct naar onder bij openen
   }
   function closePanel() {
     panel.classList.remove('pp-open');
@@ -152,14 +199,14 @@
     el.className = 'pp-msg pp-bot';
     el.innerHTML = html;
     messages.appendChild(el);
-    messages.scrollTop = messages.scrollHeight;
+    scrollToBottom({ smooth: true });
   }
   function appendUser(text) {
     const el = document.createElement('div');
     el.className = 'pp-msg pp-user';
     el.textContent = text;
     messages.appendChild(el);
-    messages.scrollTop = messages.scrollHeight;
+    scrollToBottom({ smooth: true });
   }
   let typingEl;
   function typing(on) {
@@ -169,9 +216,10 @@
       typingEl.className = 'pp-msg pp-bot';
       typingEl.innerHTML = `<div class="pp-typing" aria-live="polite"><span></span><span></span><span></span></div>`;
       messages.appendChild(typingEl);
-      messages.scrollTop = messages.scrollHeight;
+      scrollToBottom({ smooth: true });
     } else if (typingEl) {
       typingEl.remove(); typingEl = null;
+      scrollToBottom({ smooth: true });
     }
   }
   function toastError(text) {
@@ -219,6 +267,8 @@
     } else if (suggestions.length) {
       suggestions.forEach((s, i) => addChip(s, i < 2));
     }
+
+    scrollToBottom({ smooth: true });
   }
 
   function renderRecommendation(text, item, alts) {
@@ -243,6 +293,8 @@
       appendUser('Waarom deze?');
       await handleSubmit('Waarom deze?', { isChoice: false });
     }, { once: true });
+
+    scrollToBottom({ smooth: true });
   }
 
   function productCardWithImage(p, idx) {
@@ -271,6 +323,7 @@
       appendBot(`Hoi! Ik help je snel naar de best passende keuze. Eerst een paar vragen — dat kost je minder dan 1 minuut.`);
     }
     await handleSubmit('Start', { isChoice: false, reset: true });
+    scrollToBottom();
   }
 
   async function handleSubmit(text, { isChoice = false, reset = false } = {}) {
@@ -310,9 +363,11 @@
           else appendBot('Ik heb een antwoord, maar ik weet niet hoe ik het moet tonen 🤔');
         }
       }
+      scrollToBottom({ smooth: true });
     } catch (err) {
       typing(false);
       toastError(err.message || 'Er ging iets mis bij het ophalen van een antwoord.');
+      scrollToBottom({ smooth: true });
     } finally {
       state.waiting = false;
     }
@@ -330,6 +385,17 @@
     if (!val) return;
     appendUser(val);
     await handleSubmit(val, { isChoice: false });
+  });
+
+  // Enter-to-send
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const val = input.value.trim();
+      if (!val) return;
+      appendUser(val);
+      await handleSubmit(val, { isChoice: false });
+    }
   });
 
   // Open on ?open
