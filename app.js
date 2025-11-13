@@ -16,7 +16,7 @@
   };
 
   const CFG = {
-    API_BASE: (window.PP_CONFIG?.API_BASE || fromScript.API_BASE || 'http://127.0.0.1:8003').replace(/\/+$/,''),
+    API_BASE: (window.PP_CONFIG?.API_BASE || fromScript.API_BASE || 'https://api-pinterpal.onrender.com').replace(/\/+$/,''),
     API_USER:  window.PP_CONFIG?.API_USER  || fromScript.API_USER  || 'admin',
     API_PASS:  window.PP_CONFIG?.API_PASS  || fromScript.API_PASS  || 'secret',
     TABLE:     window.PP_CONFIG?.TABLE     || fromScript.TABLE     || 'wijnen',
