@@ -73,6 +73,28 @@
     booted: false
   };
 
+  // ---- Text helpers: decode -> strip tags -> escape (voor veilig HTML-insert) ----
+  function decodeHtml(s) {
+    const t = document.createElement('textarea');
+    t.innerHTML = String(s ?? '');
+    return t.value;
+  }
+  function stripTags(s) {
+    return String(s).replace(/<[^>]*>/g, '');
+  }
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+  function safeText(s) {
+    // Gebruik bij innerHTML; geeft nette tekst met accenten, zonder tags
+    return escapeHtml(stripTags(decodeHtml(s)));
+  }
+
   // ---- Auto-scroll helpers (force bottom on any change) ----
   function scrollToBottom({ smooth = false } = {}) {
     requestAnimationFrame(() => {
@@ -212,7 +234,7 @@
   function appendUser(text) {
     const el = document.createElement('div');
     el.className = 'pp-msg pp-user';
-    el.textContent = text;
+    el.textContent = text; // user input veilig via textContent
     messages.appendChild(el);
     scrollToBottom({ smooth: true });
   }
@@ -231,7 +253,7 @@
     }
   }
   function toastError(text) {
-    appendBot(`<div style="color:#ffb4b4">⚠️ ${text}</div>`);
+    appendBot(`<div style="color:#ffb4b4">⚠️ ${safeText(text)}</div>`);
   }
 
   // ---- Rendering van backend antwoorden ----
@@ -244,7 +266,7 @@
     if (data.question_text) {
       appendBot(`
         <div style="display:flex;flex-direction:column;gap:8px">
-          <div>${data.question_text}</div>
+          <div>${safeText(data.question_text)}</div>
           <div style="color:var(--pp-muted);font-size:12px;">Nog ${remaining} vraag${remaining===1?'':'en'}…</div>
         </div>
       `);
@@ -262,7 +284,8 @@
       btn.className = 'pp-chip';
       if (isPrimary) btn.classList.add('pp-chip--primary');
       btn.type = 'button';
-      btn.textContent = (typeof label === 'string') ? label : (label?.label || label?.value || 'Optie');
+      // decodeer entiteiten en zet als pure text
+      btn.textContent = decodeHtml(typeof label === 'string' ? label : (label?.label || label?.value || 'Optie'));
       btn.addEventListener('click', async () => {
         appendUser(btn.textContent);
         await handleSubmit(btn.textContent, { isChoice: true });
@@ -279,9 +302,8 @@
 
   function renderRecommendation(text, item, alts) {
     setProgressByRemaining(0);
-    if (text) appendBot(text);
+    if (text) appendBot(safeText(text));
 
-    // Toon gekozen + 2 alternatieven (server stuurt 'alternatives' met _image)
     const list = Array.isArray(alts) && alts.length ? alts : (item ? [item] : []);
     if (!list.length) return;
 
@@ -292,12 +314,10 @@
       </div>
     `);
 
-    // bij lazy image loads ook naar beneden
     messages.querySelectorAll('img').forEach(img => {
       if (!img.complete) img.addEventListener('load', () => scrollToBottom({ smooth: true }), { once: true });
     });
 
-    // knop-actie (nu ‘Waarom deze?’ — triggert detail-mode tekst)
     messages.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-pp="view"]');
       if (!btn) return;
@@ -307,19 +327,21 @@
   }
 
   function productCardWithImage(p, idx) {
-    const title = escapeHtml(p.title || p.naam || p.productName || p.name || `Optie ${idx+1}`);
+    const title = safeText(p.title || p.naam || p.productName || p.name || `Optie ${idx+1}`);
     const img = p._image || p.image || p.image_url || p.imageUrl || p.thumbnail || p.foto || p.afbeelding || '';
-    const facts = pickFacts(p, ['prijs','price','jaar','year','land','streek','druif','wijnhuis']).slice(0,3);
+    const facts = pickFacts(p, ['prijs','price','jaar','year','land','streek','druif','wijnhuis'])
+      .slice(0,3)
+      .map(safeText);
 
     return `
       <div style="display:grid;grid-template-columns:72px 1fr auto;gap:12px;align-items:center;border:1px solid var(--pp-border);background:var(--pp-bg-soft);border-radius:12px;padding:10px;">
         <div style="width:72px;height:72px;border-radius:10px;overflow:hidden;background:var(--pp-bg);border:1px solid var(--pp-border);display:grid;place-items:center;">
-          ${img ? `<img src="${escapeHtml(img)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+          ${img ? `<img src="${escapeHtml(String(img))}" alt="" style="width:100%;height:100%;object-fit:cover;">`
                 : `<span style="font-weight:700;font-size:18px;">${idx+1}</span>`}
         </div>
         <div>
           <div style="font-weight:700;margin-bottom:2px">${title}</div>
-          ${facts.length ? `<div style="font-size:12px;color:var(--pp-muted)">${facts.map(escapeHtml).join(' · ')}</div>` : ``}
+          ${facts.length ? `<div style="font-size:12px;color:var(--pp-muted)">${facts.join(' · ')}</div>` : ``}
         </div>
         <button class="pp-chip" data-pp="view" data-idx="${idx}">Bekijk</button>
       </div>
@@ -336,7 +358,7 @@
     const starter = await fetchStarter();
     appendBot(`
       <div style="display:flex;flex-direction:column;gap:8px">
-        <div>${escapeHtml(starter.question_text || 'Waar ben je naar op zoek?')}</div>
+        <div>${safeText(starter.question_text || 'Waar ben je naar op zoek?')}</div>
         <div style="color:var(--pp-muted);font-size:12px;">Je mag vrij typen of kies een optie hieronder.</div>
       </div>
     `);
@@ -351,10 +373,9 @@
         btn.className = 'pp-chip';
         if (i < 3) btn.classList.add('pp-chip--primary');
         btn.type = 'button';
-        btn.textContent = String(s);
+        btn.textContent = decodeHtml(String(s));
         btn.addEventListener('click', async () => {
           appendUser(btn.textContent);
-          // reset_detail_mode = true voor de allereerste zoekrichting
           await handleSubmit(btn.textContent, { isChoice: false, reset: true });
         });
         chipWrap.appendChild(btn);
@@ -389,15 +410,15 @@
           break;
         }
         case 'detail': {
-          if (res.response) appendBot(res.response);
+          if (res.response) appendBot(safeText(res.response));
           break;
         }
         case 'explain': {
-          if (res.response) appendBot(res.response);
+          if (res.response) appendBot(safeText(res.response));
           break;
         }
         default: {
-          if (typeof res.response === 'string') appendBot(res.response);
+          if (typeof res.response === 'string') appendBot(safeText(res.response));
           else appendBot('Ik heb een antwoord, maar ik weet niet hoe ik het moet tonen 🤔');
         }
       }
@@ -420,7 +441,6 @@
     const val = input.value.trim();
     if (!val) return;
     appendUser(val);
-    // reset alleen als dit de allereerste user prompt is (nog geen sessie)
     await handleSubmit(val, { isChoice: false, reset: !state.sessionId });
   });
 
@@ -438,7 +458,7 @@
   // Open on ?open
   if (new URLSearchParams(location.search).has('open')) openPanel();
 
-  // ---- helpers (title/facts/html escape) ----
+  // ---- helpers (facts) ----
   function pickFacts(item, keys) {
     const out = [];
     keys.forEach(k => {
@@ -447,13 +467,5 @@
       }
     });
     return out;
-  }
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#39;');
   }
 })();
