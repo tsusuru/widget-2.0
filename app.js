@@ -1,5 +1,5 @@
 /* ============ PinterPal Widget App ============ */
-/* Live API-integratie met FastAPI /enrich-data (OOP-backend) */
+/* Start met open vraag + (optionele) slimme suggesties uit /starter, auto-scroll everywhere */
 
 (function initPinterPalWidget() {
   const ROOT_ID = 'pinterpal-widget-root';
@@ -69,12 +69,12 @@
   const state = {
     sessionId: null,
     lastQuestion: null,
-    waiting: false
+    waiting: false,
+    booted: false
   };
 
   // ---- Auto-scroll helpers (force bottom on any change) ----
   function scrollToBottom({ smooth = false } = {}) {
-    // Gebruik twee frames zodat layout/afbeeldingen eerst kunnen renderen
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         try {
@@ -83,18 +83,15 @@
             behavior: smooth ? 'smooth' : 'auto'
           });
         } catch {
-          // fallback
           messages.scrollTop = messages.scrollHeight;
         }
       });
     });
   }
 
-  // Observeer DOM-wijzigingen binnen messages en grootteveranderingen
   const mutationObserver = new MutationObserver((mutationList) => {
     for (const m of mutationList) {
       if (m.type === 'childList' && (m.addedNodes?.length || m.removedNodes?.length)) {
-        // Koppel image-load events zodat late loads ook naar onder scrollen
         m.addedNodes.forEach((n) => {
           if (n.nodeType === 1) {
             const imgs = n.querySelectorAll?.('img') || [];
@@ -113,7 +110,6 @@
   mutationObserver.observe(messages, { childList: true, subtree: true });
 
   const resizeObserver = new ResizeObserver(() => {
-    // Als content groeit/krimpt (bijv. fonts/afbeeldingen), hou onderaan
     scrollToBottom({ smooth: true });
   });
   resizeObserver.observe(messages);
@@ -172,6 +168,18 @@
         table_name: CFG.TABLE
       })
     });
+  }
+
+  // ---- Optional: slimme openingsvraag/suggesties uit backend ----
+  async function fetchStarter() {
+    try {
+      const payload = await apiFetch(`/starter?table=${encodeURIComponent(CFG.TABLE)}`, { method: 'GET' });
+      if (payload && typeof payload === 'object') return payload;
+    } catch { /* fallback gebruiken */ }
+    return {
+      question_text: 'Waar ben je naar op zoek? Je mag vrij typen (bijv. “fruitige rode wijn onder €15”).',
+      suggestions: ['Rode wijn', 'Witte wijn', 'Onder €15', 'Italië', 'Droog', 'Feestelijk']
+    };
   }
 
   // ---- UI helpers ----
@@ -267,8 +275,6 @@
     } else if (suggestions.length) {
       suggestions.forEach((s, i) => addChip(s, i < 2));
     }
-
-    scrollToBottom({ smooth: true });
   }
 
   function renderRecommendation(text, item, alts) {
@@ -286,6 +292,11 @@
       </div>
     `);
 
+    // bij lazy image loads ook naar beneden
+    messages.querySelectorAll('img').forEach(img => {
+      if (!img.complete) img.addEventListener('load', () => scrollToBottom({ smooth: true }), { once: true });
+    });
+
     // knop-actie (nu ‘Waarom deze?’ — triggert detail-mode tekst)
     messages.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-pp="view"]');
@@ -293,8 +304,6 @@
       appendUser('Waarom deze?');
       await handleSubmit('Waarom deze?', { isChoice: false });
     }, { once: true });
-
-    scrollToBottom({ smooth: true });
   }
 
   function productCardWithImage(p, idx) {
@@ -317,13 +326,42 @@
     `;
   }
 
-  // ---- Conversation flow ----
+  // ---- Conversation flow (open vraag + suggesties; GEEN automatische "Start") ----
   async function bootConversation() {
-    if (messages.children.length === 0) {
-      appendBot(`Hoi! Ik help je snel naar de best passende keuze. Eerst een paar vragen — dat kost je minder dan 1 minuut.`);
+    if (state.booted) return;
+    state.booted = true;
+
+    appendBot(`Hoi! Ik help je snel naar de best passende keuze. Vertel me eerst even kort wat je zoekt.`);
+
+    const starter = await fetchStarter();
+    appendBot(`
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>${escapeHtml(starter.question_text || 'Waar ben je naar op zoek?')}</div>
+        <div style="color:var(--pp-muted);font-size:12px;">Je mag vrij typen of kies een optie hieronder.</div>
+      </div>
+    `);
+
+    if (Array.isArray(starter.suggestions) && starter.suggestions.length) {
+      const chipWrap = document.createElement('div');
+      chipWrap.className = 'pp-chips';
+      messages.appendChild(chipWrap);
+
+      starter.suggestions.slice(0, 8).forEach((s, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'pp-chip';
+        if (i < 3) btn.classList.add('pp-chip--primary');
+        btn.type = 'button';
+        btn.textContent = String(s);
+        btn.addEventListener('click', async () => {
+          appendUser(btn.textContent);
+          // reset_detail_mode = true voor de allereerste zoekrichting
+          await handleSubmit(btn.textContent, { isChoice: false, reset: true });
+        });
+        chipWrap.appendChild(btn);
+      });
     }
-    await handleSubmit('Start', { isChoice: false, reset: true });
-    scrollToBottom();
+
+    input.focus();
   }
 
   async function handleSubmit(text, { isChoice = false, reset = false } = {}) {
@@ -363,11 +401,9 @@
           else appendBot('Ik heb een antwoord, maar ik weet niet hoe ik het moet tonen 🤔');
         }
       }
-      scrollToBottom({ smooth: true });
     } catch (err) {
       typing(false);
       toastError(err.message || 'Er ging iets mis bij het ophalen van een antwoord.');
-      scrollToBottom({ smooth: true });
     } finally {
       state.waiting = false;
     }
@@ -384,7 +420,8 @@
     const val = input.value.trim();
     if (!val) return;
     appendUser(val);
-    await handleSubmit(val, { isChoice: false });
+    // reset alleen als dit de allereerste user prompt is (nog geen sessie)
+    await handleSubmit(val, { isChoice: false, reset: !state.sessionId });
   });
 
   // Enter-to-send
@@ -394,7 +431,7 @@
       const val = input.value.trim();
       if (!val) return;
       appendUser(val);
-      await handleSubmit(val, { isChoice: false });
+      await handleSubmit(val, { isChoice: false, reset: !state.sessionId });
     }
   });
 
@@ -402,9 +439,6 @@
   if (new URLSearchParams(location.search).has('open')) openPanel();
 
   // ---- helpers (title/facts/html escape) ----
-  function pickTitle(item) {
-    return item.title || item.naam || item.productName || item.name || item.id || 'Aanbeveling';
-  }
   function pickFacts(item, keys) {
     const out = [];
     keys.forEach(k => {
